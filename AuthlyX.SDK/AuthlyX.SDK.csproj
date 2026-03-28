@@ -8,12 +8,13 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <PackageId>AuthlyX</PackageId>
-    <Version>2.0.1</Version>
+    <Version>2.0.2</Version>
     <Authors>AuthlyX</Authors>
     <Company>AuthlyX</Company>
     <Description>AuthlyX C# SDK for .NET Framework and .NET Standard with v2 request metadata and response signature verification.</Description>
     <PackageTags>authlyx;auth;security;sdk</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
     <PackageProjectUrl>https://github.com/authlyx/AuthlyX-CS-Example</PackageProjectUrl>
     <RepositoryUrl>https://github.com/authlyx/AuthlyX-CS-Example</RepositoryUrl>
@@ -24,6 +25,7 @@
 
   <ItemGroup>
     <None Include="..\LICENSE.txt" Pack="true" PackagePath="\" Link="LICENSE.txt" />
+    <None Include="icon.png" Pack="true" PackagePath="\" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
