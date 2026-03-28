@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36212.18
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuthlyX C# Example (Console)", "AuthlyX C# Example (Console)\AuthlyX C# Example (Console).csproj", "{5D7285DF-C153-4D94-9C55-737FBDFAE328}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuthlyX C# Example (Form)", "AuthlyX C# Example (Form)\AuthlyX C# Example (Form).csproj", "{71129B38-F66C-4530-BF74-24B754D4F1A4}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5D7285DF-C153-4D94-9C55-737FBDFAE328}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5D7285DF-C153-4D94-9C55-737FBDFAE328}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5D7285DF-C153-4D94-9C55-737FBDFAE328}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5D7285DF-C153-4D94-9C55-737FBDFAE328}.Release|Any CPU.Build.0 = Release|Any CPU
+		{71129B38-F66C-4530-BF74-24B754D4F1A4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{71129B38-F66C-4530-BF74-24B754D4F1A4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{71129B38-F66C-4530-BF74-24B754D4F1A4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{71129B38-F66C-4530-BF74-24B754D4F1A4}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {05F67651-EF96-47FD-805C-94CB972F1A4B}
+	EndGlobalSection
+EndGlobal
