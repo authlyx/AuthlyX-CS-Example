@@ -79,6 +79,7 @@ public static Auth AuthlyXApp = new Auth(
 - `Init()`
 - `Login(identifier, password = null, deviceType = null)`
 - `Register(username, password, licenseKey, email = null)`
+- `ChangePassword(oldPassword, newPassword)`
 - `ExtendTime(username, licenseKey)`
 - `GetVariable(key)`
 - `SetVariable(key, value)`
@@ -181,6 +182,21 @@ string value = AuthlyXApp.GetVariable("theme");
 Console.WriteLine(value);
 ```
 
+## Change Password Example
+
+```csharp
+AuthlyXApp.ChangePassword("oldpass", "newpass");
+
+if (AuthlyXApp.response.success)
+{
+    Console.WriteLine("Password changed successfully");
+}
+else
+{
+    Console.WriteLine(AuthlyXApp.response.message);
+}
+```
+
 ## Chat Example
 
 ```csharp
@@ -252,4 +268,3 @@ AuthlyXApp.init();
 - The SDK currently supports both `sid` and `hwid` for compatibility with older integrations.
 - If you are starting fresh, treat `sid` as the preferred system identifier concept.
 - The example apps in the example folder are reference integrations, not required project structure.
-

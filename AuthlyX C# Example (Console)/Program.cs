@@ -9,11 +9,11 @@ namespace AuthlyX_CSharp_Example__Console_
     internal class Program
     {
         public static Auth AuthlyXApp = new Auth(
-            ownerId: "",
-            appName: "",
-            version: "",
-            secret: ""
-        );
+        ownerId: "",
+        appName: "",
+        version: "",
+        secret: ""
+    );
 
         /*
         Optional:

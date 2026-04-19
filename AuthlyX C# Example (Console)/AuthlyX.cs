@@ -92,6 +92,7 @@ namespace AuthlyX
             public bool Available { get; set; }
             public string LatestVersion { get; set; }
             public string DownloadUrl { get; set; }
+            public bool AutoUpdateEnabled { get; set; }
             public bool ForceUpdate { get; set; }
             public string Changelog { get; set; }
             public bool ShowReminder { get; set; }
@@ -249,6 +250,25 @@ namespace AuthlyX
         public void Register(string username, string password, string key, Action<ResponseStruct> callback)
         {
             RunAsync(() => Register(username, password, key, (string)null), callback);
+        }
+
+        public void ChangePassword(string oldPassword, string newPassword)
+        {
+            if (!EnsureInitialized()) return;
+
+            JObject payload = new JObject
+            {
+                ["session_id"] = sessionId,
+                ["old_password"] = oldPassword ?? string.Empty,
+                ["new_password"] = newPassword ?? string.Empty
+            };
+
+            SendJson("change-password", payload, false);
+        }
+
+        public void ChangePassword(string oldPassword, string newPassword, Action<ResponseStruct> callback)
+        {
+            RunAsync(() => ChangePassword(oldPassword, newPassword), callback);
         }
 
         public void ExtendTime(string username, string licenseKey)
@@ -507,6 +527,16 @@ namespace AuthlyX
         public void extendTime(string username, string licenseKey, Action<ResponseStruct> callback)
         {
             ExtendTime(username, licenseKey, callback);
+        }
+
+        public void changePassword(string oldPassword, string newPassword)
+        {
+            ChangePassword(oldPassword, newPassword);
+        }
+
+        public void changePassword(string oldPassword, string newPassword, Action<ResponseStruct> callback)
+        {
+            ChangePassword(oldPassword, newPassword, callback);
         }
 
         public string getVariable(string varKey)
@@ -768,49 +798,24 @@ namespace AuthlyX
             WriteLog($"[SDK][INIT_FAIL] code={code} message={message}");
 
             EnsureConsoleForFatalError();
-            Console.WriteLine("Initialization failed.");
-            Console.WriteLine(message);
 
             bool isVersionError =
                 string.Equals(code, "UPDATE_REQUIRED", StringComparison.OrdinalIgnoreCase);
 
-            bool canOfferDownload =
-                updateData != null &&
-                !string.IsNullOrWhiteSpace(updateData.DownloadUrl) &&
-                (updateData.Available || isVersionError);
-
             if (isVersionError)
             {
-                if (!string.IsNullOrWhiteSpace(updateData?.LatestVersion))
-                {
-                    Console.WriteLine($"Latest version: {updateData.LatestVersion}");
-                }
-
-                if (canOfferDownload)
-                {
-                    Console.WriteLine();
-                    Console.WriteLine("1. Download Latest");
-                    Console.WriteLine("2. Exit");
-                    Console.WriteLine();
-                    Console.Write("Select an option (1 or 2): ");
-
-                    string choice = Console.ReadLine();
-                    if (choice == "1")
-                    {
-                        OpenDownloadUrl();
-                        Console.WriteLine("Opening download URL...");
-                    }
-                }
-                else
-                {
-                    Console.WriteLine("No download URL is available for this update.");
-                }
+                ShowRequiredUpdateConsoleAndExit(message);
             }
+            else
+            {
+                Console.WriteLine("Initialization failed.");
+                Console.WriteLine(message);
 
-            Console.WriteLine();
-            Console.Write("Press any key to close...");
-            Console.ReadKey(true);
-            Environment.Exit(1);
+                Console.WriteLine();
+                Console.Write("Press any key to close...");
+                Console.ReadKey(true);
+                Environment.Exit(1);
+            }
         }
 
         private static void EnsureConsoleForFatalError()
@@ -828,35 +833,170 @@ namespace AuthlyX
             }
         }
 
-        private void ShowStartupUpdateReminderIfNeeded()
+        private static int CompareSemver(string a, string b)
         {
-            if (updateData == null || !updateData.ShowReminder)
+            int[] ParseParts(string v)
+            {
+                if (string.IsNullOrWhiteSpace(v))
+                {
+                    return new[] { 0, 0, 0 };
+                }
+
+                string trimmed = v.Trim();
+                int dash = trimmed.IndexOf('-');
+                if (dash >= 0)
+                {
+                    trimmed = trimmed.Substring(0, dash);
+                }
+
+                string[] pieces = trimmed.Split('.');
+                int[] outParts = new[] { 0, 0, 0 };
+                for (int i = 0; i < outParts.Length && i < pieces.Length; i++)
+                {
+                    if (int.TryParse(pieces[i], NumberStyles.Integer, CultureInfo.InvariantCulture, out int n))
+                    {
+                        outParts[i] = n;
+                    }
+                }
+                return outParts;
+            }
+
+            int[] ap = ParseParts(a);
+            int[] bp = ParseParts(b);
+            for (int i = 0; i < 3; i++)
+            {
+                if (ap[i] < bp[i]) return -1;
+                if (ap[i] > bp[i]) return 1;
+            }
+            return 0;
+        }
+
+        private bool ShouldShowUpdatePrompt(bool forceShow)
+        {
+            if (updateData == null || !updateData.Available)
+            {
+                return false;
+            }
+
+            if (forceShow)
+            {
+                return true;
+            }
+
+            if (!IsClientOutdated())
+            {
+                return false;
+            }
+
+            if (!HasWhitelistedUpdateMessage())
+            {
+                return false;
+            }
+
+            if (!updateData.ShowReminder && string.IsNullOrWhiteSpace(updateData.AllowedUntil))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool IsClientOutdated()
+        {
+            string latest = updateData.LatestVersion ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(latest))
+            {
+                return false;
+            }
+
+            int cmp = CompareSemver(version ?? string.Empty, latest);
+            return cmp < 0;
+        }
+
+        private bool HasWhitelistedUpdateMessage()
+        {
+            return updateData != null &&
+                (updateData.ShowReminder || !string.IsNullOrWhiteSpace(updateData.AllowedUntil));
+        }
+
+        private bool IsAutoUpdateEnabled()
+        {
+            return updateData != null &&
+                updateData.AutoUpdateEnabled;
+        }
+
+        private string BuildWhitelistedUpdateMessage()
+        {
+            string accessLine;
+            if (!string.IsNullOrWhiteSpace(updateData?.AllowedUntil))
+            {
+                accessLine = $"A new version is ready, and you can keep using this build until {FormatDisplayDate(updateData.AllowedUntil)}.";
+            }
+            else
+            {
+                accessLine = "A new version is ready, and you can still use this build for now.";
+            }
+
+            if (!IsAutoUpdateEnabled())
+            {
+                return accessLine;
+            }
+
+            return string.Concat(
+                accessLine,
+                Environment.NewLine,
+                Environment.NewLine,
+                "Would you like to download the latest version now?");
+        }
+
+        private void ShowRequiredUpdateConsoleAndExit(string message)
+        {
+            Console.WriteLine(message);
+
+            if (!string.IsNullOrWhiteSpace(updateData?.LatestVersion))
+            {
+                Console.WriteLine($"Latest version: {updateData.LatestVersion}");
+            }
+
+            if (IsAutoUpdateEnabled() && !string.IsNullOrWhiteSpace(updateData?.DownloadUrl))
+            {
+                Console.WriteLine("1. Download Latest");
+                Console.WriteLine("2. Exit");
+                Console.Write("Select an option (1 or 2): ");
+
+                string choice = Console.ReadLine();
+                if (choice == "1")
+                {
+                    OpenDownloadUrl();
+                }
+            }
+
+            Environment.Exit(1);
+        }
+
+        private static string FormatDisplayDate(string rawDate)
+        {
+            if (string.IsNullOrWhiteSpace(rawDate))
+            {
+                return rawDate;
+            }
+
+            if (DateTimeOffset.TryParse(rawDate, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTimeOffset parsed))
+            {
+                return parsed.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture);
+            }
+
+            return rawDate;
+        }
+
+        private void ShowStartupUpdateReminderIfNeeded(bool forceShow = false)
+        {
+            if (!ShouldShowUpdatePrompt(forceShow))
             {
                 return;
             }
 
-            string message = string.IsNullOrWhiteSpace(updateData.ReminderMessage)
-                ? "This version is outdated. Download the latest version?"
-                : updateData.ReminderMessage;
-
-            if (!string.IsNullOrWhiteSpace(updateData?.DownloadUrl))
-            {
-                message = string.Concat(
-                    message,
-                    Environment.NewLine,
-                    Environment.NewLine,
-                    "Would you like to download the latest Version?");
-            }
-
-            if (!string.IsNullOrWhiteSpace(updateData.LatestVersion))
-            {
-                message = string.Concat(message, Environment.NewLine, Environment.NewLine, "Latest version: ", updateData.LatestVersion);
-            }
-
-            if (!string.IsNullOrWhiteSpace(updateData.AllowedUntil))
-            {
-                message = string.Concat(message, Environment.NewLine, "Grace access until: ", updateData.AllowedUntil);
-            }
+            string message = BuildWhitelistedUpdateMessage();
 
             bool handled = TryShowGuiReminder(message);
             if (!handled)
@@ -887,7 +1027,7 @@ namespace AuthlyX
                     return false;
                 }
 
-                object buttons = Enum.Parse(buttonsType, string.IsNullOrWhiteSpace(updateData?.DownloadUrl) ? "OK" : "YesNo");
+                object buttons = Enum.Parse(buttonsType, IsAutoUpdateEnabled() ? "YesNo" : "OK");
                 object icon = Enum.Parse(iconType, "Information");
                 MethodInfo showMethod = messageBoxType.GetMethod("Show", new[] { typeof(string), typeof(string), buttonsType, iconType });
                 if (showMethod == null)
@@ -895,8 +1035,8 @@ namespace AuthlyX
                     return false;
                 }
 
-                object result = showMethod.Invoke(null, new object[] { message, "Update Reminder", buttons, icon });
-                if (!string.IsNullOrWhiteSpace(updateData?.DownloadUrl))
+                object result = showMethod.Invoke(null, new object[] { message, "New Update Available", buttons, icon });
+                if (IsAutoUpdateEnabled() && !string.IsNullOrWhiteSpace(updateData?.DownloadUrl))
                 {
                     object yesValue = Enum.Parse(dialogResultType, "Yes");
                     if (result != null && result.Equals(yesValue))
@@ -917,12 +1057,10 @@ namespace AuthlyX
         {
             EnsureConsoleForFatalError();
             Console.WriteLine(message);
-            if (!string.IsNullOrWhiteSpace(updateData?.DownloadUrl))
+            if (IsAutoUpdateEnabled() && !string.IsNullOrWhiteSpace(updateData?.DownloadUrl))
             {
                 Console.WriteLine();
-                Console.WriteLine("Yes - Open browser and download Latest");
-                Console.WriteLine("No - Continue to the app");
-                Console.Write("Choose Yes or No (Y/N): ");
+                Console.Write("Download the latest version now? (Y/N): ");
                 string choice = Console.ReadLine();
                 if (string.Equals(choice, "y", StringComparison.OrdinalIgnoreCase))
                 {
@@ -1372,6 +1510,7 @@ namespace AuthlyX
                 {
                     updateData.Available = true;
                     updateData.LatestVersion = obj["server_version"]?.ToString() ?? obj["version"]?.ToString();
+                    updateData.AutoUpdateEnabled = ReadBool(obj["auto_update_enabled"]) ?? false;
                     updateData.DownloadUrl = obj["auto_update_download_url"]?.ToString();
                     updateData.ForceUpdate = ReadBool(obj["force_update"]) ?? false;
                 }
@@ -1380,6 +1519,7 @@ namespace AuthlyX
 
             updateData.Available = ReadBool(update["available"]) ?? false;
             updateData.LatestVersion = update["latest_version"]?.ToString();
+            updateData.AutoUpdateEnabled = ReadBool(update["auto_update_enabled"]) ?? false;
             updateData.DownloadUrl = update["download_url"]?.ToString();
             updateData.ForceUpdate = ReadBool(update["force_update"]) ?? false;
             updateData.Changelog = update["changelog"]?.ToString();

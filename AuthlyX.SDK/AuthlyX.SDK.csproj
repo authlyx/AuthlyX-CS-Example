@@ -8,7 +8,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <PackageId>AuthlyX</PackageId>
-    <Version>2.0.2</Version>
+    <Version>2.0.3</Version>
     <Authors>AuthlyX</Authors>
     <Company>AuthlyX</Company>
     <Description>AuthlyX C# SDK for .NET Framework and .NET Standard with v2 request metadata and response signature verification.</Description>
@@ -37,5 +37,4 @@
   <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
     <Reference Include="System.Net.Http" />
   </ItemGroup>
-  </Project>
-
+</Project>
