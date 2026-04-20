@@ -2,7 +2,7 @@
 
 This is a C# authentication SDK for desktop and .NET applications that want simple integration with the AuthlyX API.
 
-This folder is primarily for SDK users. The Console and WinForms apps here are only reference examples to help you integrate faster.
+This package is for SDK users. The Console and WinForms apps in the example folder are only reference examples to help you integrate faster.
 
 ## Supported Targets
 
@@ -15,18 +15,87 @@ The SDK supports:
 
 Modern `.NET` and `.NET Core` projects can consume the `netstandard2.0` build.
 
-## Install
+## Installation
 
-### NuGet
+Choose the setup that fits your project.
 
-Install the `AuthlyX` package from NuGet when published.
+### 1. NuGet package installation
 
-### Manual
+This is the quickest option and the easiest one to maintain.
 
-If you are using the raw `AuthlyX.cs` file manually, you also need:
+Install the package from NuGet:
 
-- `Newtonsoft.Json`
-- `Portable.BouncyCastle`
+```powershell
+Install-Package AuthlyX
+```
+
+Or with the .NET CLI:
+
+```powershell
+dotnet add package AuthlyX
+```
+
+Once installed, import the namespace in your project:
+
+```csharp
+using AuthlyX;
+```
+
+Use this option if you want package updates, clean dependency management, and the simplest setup.
+
+### 2. Class installation
+
+If you prefer to keep the SDK as a source file inside your project, you can add `AuthlyX.cs` manually.
+
+Steps:
+
+1. Download `AuthlyX.cs`.
+2. Add it to your project.
+3. Install the required dependencies manually:
+   - `Newtonsoft.Json`
+   - `Portable.BouncyCastle`
+4. Import the namespace:
+
+```csharp
+using AuthlyX;
+```
+
+You can install the dependencies with NuGet Package Manager:
+
+```powershell
+Install-Package Newtonsoft.Json
+Install-Package Portable.BouncyCastle
+```
+
+Or with the .NET CLI:
+
+```powershell
+dotnet add package Newtonsoft.Json
+dotnet add package Portable.BouncyCastle
+```
+
+This option works well if you want the SDK source directly in your solution and prefer to manage updates yourself.
+
+### 3. DLL installation
+
+If you already have a compiled `AuthlyX.dll`, you can reference it manually instead of installing the full package through NuGet.
+
+Steps:
+
+1. Build or obtain `AuthlyX.dll`.
+2. In Visual Studio, right-click **References** or **Dependencies**.
+3. Choose **Add Reference**.
+4. Browse to `AuthlyX.dll` and add it.
+5. Make sure your project also has the required dependencies:
+   - `Newtonsoft.Json`
+   - `Portable.BouncyCastle`
+6. Import the namespace:
+
+```csharp
+using AuthlyX;
+```
+
+This option is useful when you want to ship or test a specific SDK build without pulling from NuGet.
 
 ## Quick Start
 
@@ -79,6 +148,7 @@ public static Auth AuthlyXApp = new Auth(
 - `Init()`
 - `Login(identifier, password = null, deviceType = null)`
 - `Register(username, password, licenseKey, email = null)`
+- `ChangePassword(oldPassword, newPassword)`
 - `ExtendTime(username, licenseKey)`
 - `GetVariable(key)`
 - `SetVariable(key, value)`
@@ -181,6 +251,21 @@ string value = AuthlyXApp.GetVariable("theme");
 Console.WriteLine(value);
 ```
 
+## Change Password Example
+
+```csharp
+AuthlyXApp.ChangePassword("oldpass", "newpass");
+
+if (AuthlyXApp.response.success)
+{
+    Console.WriteLine("Password changed successfully");
+}
+else
+{
+    Console.WriteLine(AuthlyXApp.response.message);
+}
+```
+
 ## Chat Example
 
 ```csharp
@@ -251,11 +336,4 @@ AuthlyXApp.init();
 
 - The SDK currently supports both `sid` and `hwid` for compatibility with older integrations.
 - If you are starting fresh, treat `sid` as the preferred system identifier concept.
-- The example apps in this folder are reference integrations, not required project structure.
-
-## Reference Examples
-
-Reference apps included in this folder:
-
-- `AuthlyX C# Example (Console)`
-- `AuthlyX C# Example (Form)`
+- The example apps in the example folder are reference integrations, not required project structure.
