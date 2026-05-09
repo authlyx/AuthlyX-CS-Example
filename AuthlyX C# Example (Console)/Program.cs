@@ -1,4 +1,4 @@
-﻿using AuthlyX;
+using AuthlyX;
 using System;
 using System.Linq;
 using System.Text;
@@ -9,11 +9,11 @@ namespace AuthlyX_CSharp_Example__Console_
     internal class Program
     {
         public static Auth AuthlyXApp = new Auth(
-        ownerId: "",
-        appName: "",
-        version: "",
-        secret: ""
-    );
+            ownerId: "",
+            appName: "",
+            version: "",
+            secret: "",
+        );
 
         /*
         Optional:
@@ -24,32 +24,27 @@ namespace AuthlyX_CSharp_Example__Console_
         {
             Console.Title = "AuthlyX";
             Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine("╔══════════════════════════════════════╗");
-            Console.WriteLine("║           AUTHLYX C# EXAMPLE         ║");
-            Console.WriteLine("║             Console Test             ║");
-            Console.WriteLine("╚══════════════════════════════════════╝");
+            Console.WriteLine("==============================================");
+            Console.WriteLine("              AUTHLYX C# EXAMPLE              ");
+            Console.WriteLine("==============================================");
             Console.ResetColor();
 
-            Console.WriteLine("\n Starting...");
+            Console.WriteLine("\nInitializing AuthlyX connection...");
 
             AuthlyXApp.Init();
             if (!AuthlyXApp.response.success)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"Couldn't Start: {AuthlyXApp.response.message}");
+                Console.WriteLine($"Connection Failed: {AuthlyXApp.response.message}");
                 Console.ResetColor();
                 Console.WriteLine("Press any key to exit...");
                 Console.ReadKey();
                 return;
             }
-            string varA = AuthlyXApp.GetVariable("name");
-            string aob = varA;
+
             Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine("Connection Established Successfully!");
+            Console.WriteLine("[OK] Connected Successfully!");
             Console.ResetColor();
-
-
-            Console.WriteLine(aob);
             bool running = true;
             while (running)
             {

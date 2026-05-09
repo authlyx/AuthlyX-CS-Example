@@ -1,4 +1,4 @@
-﻿namespace AuthlyX_CS_Example_Form
+namespace AuthlyX_CS_Example_Form
 {
     partial class Login
     {

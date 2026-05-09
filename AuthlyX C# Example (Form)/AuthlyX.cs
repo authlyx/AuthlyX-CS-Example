@@ -1,3 +1,4 @@
+// AuthlyX SDK Version 2.1
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Org.BouncyCastle.Crypto;
@@ -32,6 +33,7 @@ namespace AuthlyX
 
         private readonly string baseUrl;
         private readonly string secret;
+        private const string DefaultServerPublicKeyPem = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAgX5lXPhkadeQozyudzTxDXopdJxYexD5qZ0yEq9UOMU=\n-----END PUBLIC KEY-----";
         private readonly string serverPublicKeyPem;
         private readonly bool requireSignedResponses;
         private readonly long allowedClockSkewMs;
@@ -156,7 +158,7 @@ namespace AuthlyX
             this.secret = secret ?? string.Empty;
             this.loggingEnabled = debug;
             this.baseUrl = NormalizeBaseUrl(api);
-            this.serverPublicKeyPem = string.IsNullOrWhiteSpace(serverPublicKeyPem) ? null : serverPublicKeyPem.Replace("\\n", "\n");
+            this.serverPublicKeyPem = string.IsNullOrWhiteSpace(serverPublicKeyPem) ? DefaultServerPublicKeyPem.Replace("\\n", "\n") : serverPublicKeyPem.Replace("\\n", "\n");
             this.requireSignedResponses = requireSignedResponses;
             this.allowedClockSkewMs = allowedClockSkewMs > 0 ? allowedClockSkewMs : DefaultClockSkewMs;
 
@@ -169,6 +171,8 @@ namespace AuthlyX
 
         public void Init()
         {
+            ConfigureConsoleEncoding();
+
             if (!HasRequiredCredentials())
             {
                 SetFailure("MISSING_CREDENTIALS", "Owner ID, app name, version, and secret are required.");
@@ -263,7 +267,7 @@ namespace AuthlyX
                 ["new_password"] = newPassword ?? string.Empty
             };
 
-            SendJson("change-password", payload, false);
+            SendJson("change-password", payload, true);
         }
 
         public void ChangePassword(string oldPassword, string newPassword, Action<ResponseStruct> callback)
@@ -284,7 +288,7 @@ namespace AuthlyX
                 ["ip"] = GetPublicIp()
             };
 
-            SendJson("extend", payload, false);
+            SendJson("extend", payload, true);
         }
 
         public void ExtendTime(string username, string licenseKey, Action<ResponseStruct> callback)
@@ -302,7 +306,7 @@ namespace AuthlyX
                 ["var_key"] = varKey ?? string.Empty
             };
 
-            SendJson("variables", payload, false);
+            SendJson("variables", payload, true);
             return variableData.VarValue;
         }
 
@@ -322,7 +326,7 @@ namespace AuthlyX
                 ["var_value"] = varValue ?? string.Empty
             };
 
-            SendJson("variables/set", payload, false);
+            SendJson("variables/set", payload, true);
         }
 
         public void SetVariable(string varKey, string varValue, Action<ResponseStruct> callback)
@@ -340,7 +344,7 @@ namespace AuthlyX
                 ["message"] = message ?? string.Empty
             };
 
-            SendJson("logs", payload, false);
+            SendJson("logs", payload, true);
         }
 
         public void Log(string message, Action<ResponseStruct> callback)
@@ -374,7 +378,7 @@ namespace AuthlyX
                 payload["cursor"] = cursor;
             }
 
-            SendJson("chats/get", payload, false);
+            SendJson("chats/get", payload, true);
             return response.raw;
         }
 
@@ -404,7 +408,7 @@ namespace AuthlyX
                 ["message"] = message ?? string.Empty
             };
 
-            SendJson("chats/send", payload, false);
+            SendJson("chats/send", payload, true);
         }
 
         public void SendChat(string message, string channelName, Action<ResponseStruct> callback)
@@ -425,7 +429,7 @@ namespace AuthlyX
                 ["session_id"] = sessionId
             };
 
-            JObject obj = SendJson("validate-session", payload, false);
+            JObject obj = SendJson("validate-session", payload, true);
             if (!response.success)
             {
                 return false;
@@ -702,7 +706,7 @@ namespace AuthlyX
                 ["ip"] = GetPublicIp()
             };
 
-            SendJson("device-auth", payload, false);
+            SendJson("device-auth", payload, true);
         }
 
         private bool HasRequiredCredentials()
@@ -788,19 +792,32 @@ namespace AuthlyX
             };
         }
 
+        private static void ConfigureConsoleEncoding()
+        {
+            try
+            {
+                Console.InputEncoding = Encoding.UTF8;
+                Console.OutputEncoding = new UTF8Encoding(false);
+            }
+            catch
+            {
+            }
+        }
+
         private void HandleInitFailureAndExit()
         {
             string code = response.code ?? string.Empty;
-            string message = string.IsNullOrWhiteSpace(response.message)
+            string message = CleanDisplayText(string.IsNullOrWhiteSpace(response.message)
                 ? "Unable to initialize AuthlyX."
-                : response.message;
+                : response.message);
 
             WriteLog($"[SDK][INIT_FAIL] code={code} message={message}");
 
             EnsureConsoleForFatalError();
 
             bool isVersionError =
-                string.Equals(code, "UPDATE_REQUIRED", StringComparison.OrdinalIgnoreCase);
+                string.Equals(code, "UPDATE_REQUIRED", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(code, "VERSION_MISMATCH", StringComparison.OrdinalIgnoreCase);
 
             if (isVersionError)
             {
@@ -826,10 +843,16 @@ namespace AuthlyX
                 {
                     AllocConsole();
                 }
+
+                Stream output = Console.OpenStandardOutput();
+                Stream input = Console.OpenStandardInput();
+                Console.SetOut(new StreamWriter(output, Encoding.UTF8) { AutoFlush = true });
+                Console.SetError(new StreamWriter(output, Encoding.UTF8) { AutoFlush = true });
+                Console.SetIn(new StreamReader(input, Encoding.UTF8));
             }
             catch
             {
-             
+
             }
         }
 
@@ -927,23 +950,40 @@ namespace AuthlyX
 
         private string BuildWhitelistedUpdateMessage()
         {
+            string latestVersion = string.IsNullOrWhiteSpace(updateData?.LatestVersion)
+                ? "Not provided"
+                : updateData.LatestVersion;
+            string currentVersion = string.IsNullOrWhiteSpace(version)
+                ? "Not provided"
+                : version;
+
             string accessLine;
             if (!string.IsNullOrWhiteSpace(updateData?.AllowedUntil))
             {
-                accessLine = $"A new version is ready, and you can keep using this build until {FormatDisplayDate(updateData.AllowedUntil)}.";
+                accessLine = $"A new update is available, and this build will keep working until {FormatDisplayDate(updateData.AllowedUntil)}.";
             }
             else
             {
-                accessLine = "A new version is ready, and you can still use this build for now.";
+                accessLine = "A new update is available, and this build still has access.";
             }
+
+            string details = string.Concat(
+                accessLine,
+                Environment.NewLine,
+                Environment.NewLine,
+                "Current Version: ",
+                currentVersion,
+                Environment.NewLine,
+                "Latest Version: ",
+                latestVersion);
 
             if (!IsAutoUpdateEnabled())
             {
-                return accessLine;
+                return details;
             }
 
             return string.Concat(
-                accessLine,
+                details,
                 Environment.NewLine,
                 Environment.NewLine,
                 "Would you like to download the latest version now?");
@@ -951,11 +991,16 @@ namespace AuthlyX
 
         private void ShowRequiredUpdateConsoleAndExit(string message)
         {
+            message = CleanDisplayText(message);
             Console.WriteLine(message);
+            Console.WriteLine($"Current Version: {version}");
 
             if (!string.IsNullOrWhiteSpace(updateData?.LatestVersion))
             {
-                Console.WriteLine($"Latest version: {updateData.LatestVersion}");
+                string label = string.Equals(response.code, "VERSION_MISMATCH", StringComparison.OrdinalIgnoreCase)
+                    ? "Server Version"
+                    : "Latest version";
+                Console.WriteLine($"{label}: {updateData.LatestVersion}");
             }
 
             if (IsAutoUpdateEnabled() && !string.IsNullOrWhiteSpace(updateData?.DownloadUrl))
@@ -971,6 +1016,9 @@ namespace AuthlyX
                 }
             }
 
+            Console.WriteLine($"Connection Failed: {CleanDisplayText(message)}");
+            Console.Write("Press any key to exit...");
+            Console.ReadKey(true);
             Environment.Exit(1);
         }
 
@@ -1056,6 +1104,7 @@ namespace AuthlyX
         private void ShowConsoleReminder(string message)
         {
             EnsureConsoleForFatalError();
+            message = CleanDisplayText(message);
             Console.WriteLine(message);
             if (IsAutoUpdateEnabled() && !string.IsNullOrWhiteSpace(updateData?.DownloadUrl))
             {
@@ -1117,7 +1166,7 @@ namespace AuthlyX
                     response.nonce = securityContext.Nonce;
                     response.success = ReadBool(obj["success"]) ?? httpResponse.IsSuccessStatusCode;
                     response.code = obj["code"]?.ToString();
-                    response.message = obj["message"]?.ToString() ?? httpResponse.ReasonPhrase ?? string.Empty;
+                    response.message = CleanDisplayText(obj["message"]?.ToString() ?? httpResponse.ReasonPhrase ?? string.Empty);
 
                     if (obj["session_id"] != null)
                     {
@@ -1291,11 +1340,101 @@ namespace AuthlyX
             };
         }
 
+        private static string CleanDisplayText(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+
+            string cleaned = StripBomArtifacts(value);
+            bool changed;
+            do
+            {
+                changed = false;
+                int remove = 0;
+                while (remove < cleaned.Length && IsBadLeadingDisplayChar(cleaned[remove]))
+                {
+                    remove++;
+                }
+
+                if (remove > 0)
+                {
+                    cleaned = cleaned.Substring(remove);
+                    changed = true;
+                }
+
+                string stripped = StripBomArtifacts(cleaned);
+                if (!string.Equals(stripped, cleaned, StringComparison.Ordinal))
+                {
+                    cleaned = stripped;
+                    changed = true;
+                }
+            } while (changed);
+
+            return cleaned.TrimStart();
+        }
+
+        private static string StripBomArtifacts(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+
+            StringBuilder builder = new StringBuilder(value.Length);
+            for (int i = 0; i < value.Length; i++)
+            {
+                int current = value[i];
+
+                if (current == 0xFEFF || current == 0xFFFD)
+                {
+                    continue;
+                }
+
+                if (i + 2 < value.Length &&
+                    current == 0x00EF &&
+                    value[i + 1] == 0x00BB &&
+                    value[i + 2] == 0x00BF)
+                {
+                    i += 2;
+                    continue;
+                }
+
+                if (i + 2 < value.Length &&
+                    current == 0x2229 &&
+                    value[i + 1] == 0x2557 &&
+                    value[i + 2] == 0x2510)
+                {
+                    i += 2;
+                    continue;
+                }
+
+                builder.Append(value[i]);
+            }
+
+            return builder.ToString();
+        }
+
+        private static bool IsBadLeadingDisplayChar(char value)
+        {
+            int code = value;
+            return code == 0xFEFF ||
+                code == 0x00EF ||
+                code == 0x00BB ||
+                code == 0x00BF ||
+                code == 0x2229 ||
+                code == 0x2557 ||
+                code == 0x2510 ||
+                code == 0xFFFD ||
+                code == 0x003F;
+        }
+
         private void SetFailure(string code, string message, string raw = null, string signatureKid = null, int? statusCode = null)
         {
             response.success = false;
             response.code = code ?? string.Empty;
-            response.message = message ?? string.Empty;
+            response.message = CleanDisplayText(message);
             response.raw = raw ?? response.raw;
             response.signatureKid = signatureKid ?? response.signatureKid;
             if (statusCode.HasValue)
@@ -1303,7 +1442,7 @@ namespace AuthlyX
                 response.statusCode = statusCode.Value;
             }
 
-            WriteLog($"[SDK][ERROR] {code}: {message}");
+            WriteLog($"[SDK][ERROR] {code}: {CleanDisplayText(message)}");
         }
 
         private void ResetResponse()
@@ -1506,10 +1645,11 @@ namespace AuthlyX
             JToken update = obj?["update"];
             if (update == null)
             {
-                if (obj?["auto_update_enabled"] != null || obj?["auto_update_download_url"] != null)
+                string serverVersion = obj?["server_version"]?.ToString() ?? obj?["version"]?.ToString();
+                if (obj?["auto_update_enabled"] != null || obj?["auto_update_download_url"] != null || !string.IsNullOrWhiteSpace(serverVersion))
                 {
                     updateData.Available = true;
-                    updateData.LatestVersion = obj["server_version"]?.ToString() ?? obj["version"]?.ToString();
+                    updateData.LatestVersion = serverVersion;
                     updateData.AutoUpdateEnabled = ReadBool(obj["auto_update_enabled"]) ?? false;
                     updateData.DownloadUrl = obj["auto_update_download_url"]?.ToString();
                     updateData.ForceUpdate = ReadBool(obj["force_update"]) ?? false;
@@ -1525,7 +1665,19 @@ namespace AuthlyX
             updateData.Changelog = update["changelog"]?.ToString();
             updateData.ShowReminder = ReadBool(update["show_reminder"]) ?? false;
             updateData.ReminderMessage = update["reminder_message"]?.ToString();
-            updateData.AllowedUntil = update["allowed_until"]?.ToString();
+            updateData.AllowedUntil = NormalizeOptionalText(update["allowed_until"]?.ToString());
+        }
+
+        private static string NormalizeOptionalText(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return null;
+            }
+
+            return string.Equals(value.Trim(), "null", StringComparison.OrdinalIgnoreCase)
+                ? null
+                : value;
         }
 
         private void LoadChatData(JObject obj)
@@ -1827,7 +1979,7 @@ namespace AuthlyX
             }
             catch
             {
-                
+
             }
         }
 
