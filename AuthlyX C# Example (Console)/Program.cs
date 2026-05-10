@@ -12,7 +12,7 @@ namespace AuthlyX_CSharp_Example__Console_
             ownerId: "",
             appName: "",
             version: "",
-            secret: "",
+            secret: ""
         );
 
         /*
