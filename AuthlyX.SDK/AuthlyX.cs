@@ -149,7 +149,7 @@ namespace AuthlyX
             bool debug = true,
             string api = DefaultBaseUrl,
             string serverPublicKeyPem = null,
-            bool requireSignedResponses = false,
+            bool requireSignedResponses = true,
             long allowedClockSkewMs = DefaultClockSkewMs)
         {
             this.ownerId = ownerId ?? string.Empty;
