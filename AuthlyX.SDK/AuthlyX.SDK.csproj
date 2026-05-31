@@ -8,8 +8,8 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <PackageId>AuthlyX</PackageId>
-    <Version>2.1.1</Version>
-    <PackageReleaseNotes>Default requireSignedResponses to true across all SDKs for secure response signature verification.</PackageReleaseNotes>
+    <Version>2.2.0</Version>
+    <PackageReleaseNotes>v2.2: Simplified constructor (debug, api only). requireSignedResponses and serverPublicKeyPem are now internal defaults. Added /blacklist/check endpoint support with signed responses.</PackageReleaseNotes>
     <Authors>AuthlyX</Authors>
     <Company>AuthlyX</Company>
     <Description>AuthlyX C# SDK for .NET Framework and .NET Standard with v2 request metadata and response signature verification.</Description>

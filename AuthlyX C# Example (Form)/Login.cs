@@ -8,18 +8,6 @@ namespace AuthlyX_CS_Example_Form
     {
         private bool isInitializing;
 
-        public static Auth AuthlyXApp = new Auth(
-            ownerId: "",
-            appName: "",
-            version: "",
-            secret: ""
-        );
-
-        /*
-        Optional:
-        - Set debug to false to disable SDK logs.
-        - Set api to your custom domain, for example: https://example.com/api/v2
-        */
         public Login()
         {
             InitializeComponent();
@@ -27,7 +15,8 @@ namespace AuthlyX_CS_Example_Form
 
         private void Login_Load(object sender, EventArgs e)
         {
-            BeginInit();
+            //Program.AuthlyXApp.init();
+            //I moved it to program.cs line 32 to init before the form loads
         }
 
         private void btn_Login_Click(object sender, EventArgs e)
@@ -46,11 +35,11 @@ namespace AuthlyX_CS_Example_Form
 
             try
             {
-                AuthlyXApp.Login(username, password, callback: response =>
+                Program.AuthlyXApp.Login(username, password, callback: response =>
                 {
                     if (response.success)
                     {
-                        MessageBox.Show($"Welcome {AuthlyXApp.userData.Username}!",
+                        MessageBox.Show($"Welcome {Program.AuthlyXApp.userData.Username}!",
                             "Login Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
                         Home home = new Home();
@@ -91,11 +80,11 @@ namespace AuthlyX_CS_Example_Form
 
             try
             {
-                AuthlyXApp.Register(username, password, key, response =>
+                Program.AuthlyXApp.Register(username, password, key, response =>
                 {
                     if (response.success)
                     {
-                        MessageBox.Show($"Welcome {AuthlyXApp.userData.Username}!",
+                        MessageBox.Show($"Welcome {Program.AuthlyXApp.userData.Username}!",
                             "Registration Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
                         Home home = new Home();
@@ -134,11 +123,11 @@ namespace AuthlyX_CS_Example_Form
 
             try
             {
-                AuthlyXApp.Login(key, callback: response =>
+                Program.AuthlyXApp.Login(key, callback: response =>
                 {
                     if (response.success)
                     {
-                        MessageBox.Show($"Welcome {AuthlyXApp.userData.LicenseKey}!",
+                        MessageBox.Show($"Welcome {Program.AuthlyXApp.userData.LicenseKey}!",
                             "Login Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
                         Home home = new Home();
@@ -167,32 +156,6 @@ namespace AuthlyX_CS_Example_Form
             Application.Exit();
         }
 
-        private void BeginInit()
-        {
-            if (isInitializing)
-            {
-                return;
-            }
-
-            isInitializing = true;
-            SetFormBusy(true);
-
-            AuthlyXApp.Init(response =>
-            {
-                isInitializing = false;
-                SetFormBusy(false);
-
-                if (!response.success)
-                {
-                    MessageBox.Show(
-                        $"AuthlyX init failed: {response.message}",
-                        "Initialization Error",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
-                    Close();
-                }
-            });
-        }
 
         private void SetFormBusy(bool busy, Guna2Button activeButton = null, string activeText = null)
         {

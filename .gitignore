@@ -361,3 +361,6 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# NuGet publish script (contains API key prompt)
+AuthlyX.SDK/publish.bat

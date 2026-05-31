@@ -21,7 +21,7 @@ namespace AuthlyX_CS_Example_Form
 
         private void Home_Load(object sender, EventArgs e)
         {
-            var data = Login.AuthlyXApp.userData;
+            var data = Program.AuthlyXApp.userData;
             username.Text = data.Username;
             email.Text = data.Email;
             license_key.Text = data.LicenseKey;
@@ -43,7 +43,7 @@ namespace AuthlyX_CS_Example_Form
             }
 
             btn_GetVar.Enabled = false;
-            Login.AuthlyXApp.GetVariable(key, (value, response) =>
+            Program.AuthlyXApp.GetVariable(key, (value, response) =>
             {
                 btn_GetVar.Enabled = true;
 
@@ -71,7 +71,7 @@ namespace AuthlyX_CS_Example_Form
             }
 
             btn_SetVar.Enabled = false;
-            Login.AuthlyXApp.SetVariable(key, value, response =>
+            Program.AuthlyXApp.SetVariable(key, value, response =>
             {
                 btn_SetVar.Enabled = true;
 
@@ -89,7 +89,7 @@ namespace AuthlyX_CS_Example_Form
             if (!string.IsNullOrEmpty(chat))
             {
                 btn_SendMSG.Enabled = false;
-                Login.AuthlyXApp.SendChat(chat, ChannelName, response =>
+                Program.AuthlyXApp.SendChat(chat, ChannelName, response =>
                 {
                     btn_SendMSG.Enabled = true;
 
@@ -119,7 +119,7 @@ namespace AuthlyX_CS_Example_Form
             }
 
             loadingChats = true;
-            Login.AuthlyXApp.GetChats(ChannelName, (chatJson, response) =>
+            Program.AuthlyXApp.GetChats(ChannelName, (chatJson, response) =>
             {
                 loadingChats = false;
 
@@ -130,12 +130,12 @@ namespace AuthlyX_CS_Example_Form
 
                 richtextbox.Clear();
 
-                if (Login.AuthlyXApp.chatMessages.Count <= 0)
+                if (Program.AuthlyXApp.chatMessages.Count <= 0)
                 {
                     return;
                 }
 
-                var sortedMessages = Login.AuthlyXApp.chatMessages.Messages
+                var sortedMessages = Program.AuthlyXApp.chatMessages.Messages
                     .OrderBy(m => m.CreatedAtDateTime ?? DateTime.MinValue)
                     .ToList();
 

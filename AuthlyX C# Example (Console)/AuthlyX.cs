@@ -1,4 +1,4 @@
-// AuthlyX SDK Version 2.1
+// AuthlyX SDK Version 2.2
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Org.BouncyCastle.Crypto;
@@ -42,6 +42,7 @@ namespace AuthlyX
         private string applicationHash;
         private bool initialized;
         private bool loggingEnabled;
+        private bool antiDebug;
         private string cachedPublicIp;
         private DateTime cachedPublicIpExpiresAt = DateTime.MinValue;
 
@@ -141,6 +142,12 @@ namespace AuthlyX
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool AttachConsole(int dwProcessId);
 
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool CheckRemoteDebuggerPresent(IntPtr hProcess, ref bool isDebuggerPresent);
+
+        [DllImport("kernel32.dll", EntryPoint = "GetCurrentProcess")]
+        private static extern IntPtr NativeGetCurrentProcess();
+
         public Auth(
             string ownerId,
             string appName,
@@ -148,26 +155,38 @@ namespace AuthlyX
             string secret,
             bool debug = true,
             string api = DefaultBaseUrl,
-            string serverPublicKeyPem = null,
-            bool requireSignedResponses = true,
-            long allowedClockSkewMs = DefaultClockSkewMs)
+            bool antiDebug = true)
         {
             this.ownerId = ownerId ?? string.Empty;
             this.appName = appName ?? string.Empty;
             this.version = version ?? string.Empty;
             this.secret = secret ?? string.Empty;
             this.loggingEnabled = debug;
+            this.antiDebug = antiDebug;
             this.baseUrl = NormalizeBaseUrl(api);
-            this.serverPublicKeyPem = string.IsNullOrWhiteSpace(serverPublicKeyPem) ? DefaultServerPublicKeyPem.Replace("\\n", "\n") : serverPublicKeyPem.Replace("\\n", "\n");
-            this.requireSignedResponses = requireSignedResponses;
-            this.allowedClockSkewMs = allowedClockSkewMs > 0 ? allowedClockSkewMs : DefaultClockSkewMs;
+            this.serverPublicKeyPem = DefaultServerPublicKeyPem.Replace("\\n", "\n");
+            this.requireSignedResponses = true;
+            this.allowedClockSkewMs = DefaultClockSkewMs;
 
             AuthlyXLogger.AppName = this.appName;
             AuthlyXLogger.Enabled = debug;
 
+            if (antiDebug)
+            {
+                if (Debugger.IsAttached)
+                    Environment.Exit(1);
+                bool isRemoteDebugger = false;
+                CheckRemoteDebuggerPresent(NativeGetCurrentProcess(), ref isRemoteDebugger);
+                if (isRemoteDebugger)
+                    Environment.Exit(1);
+            }
+
             CalculateApplicationHash();
+            StartExeIntegrityCheck();
+            StartIntegrityHeartbeat();
             WriteLog($"[SDK] AuthlyX initialized for app '{this.appName}' using '{this.baseUrl}'.");
         }
+
         public void Init()
         {
             ConfigureConsoleEncoding();
@@ -851,7 +870,7 @@ namespace AuthlyX
             }
             catch
             {
-
+             
             }
         }
 
@@ -1119,6 +1138,11 @@ namespace AuthlyX
 
         private JObject SendJson(string endpoint, JObject payload, bool expectSignedResponse)
         {
+            return Task.Run(() => SendJsonAsync(endpoint, payload, expectSignedResponse)).GetAwaiter().GetResult();
+        }
+
+        private async Task<JObject> SendJsonAsync(string endpoint, JObject payload, bool expectSignedResponse)
+        {
             ResetResponse();
 
             if (payload == null)
@@ -1126,77 +1150,100 @@ namespace AuthlyX
                 return Failure("INVALID_PAYLOAD", "Payload cannot be null.");
             }
 
-            SecurityContext securityContext = CreateSecurityContext();
-            payload["request_id"] = securityContext.RequestId;
-            payload["nonce"] = securityContext.Nonce;
-            payload["timestamp"] = securityContext.TimestampMs;
+            const int maxAttempts = 3;
+            int[] retryDelaysMs = { 1000, 2000 };
 
-            string requestBody = CanonicalizeToken(payload);
-            string url = BuildUrl(endpoint);
-
-            WriteLog($"[SDK][REQUEST] POST {url} {requestBody}");
-
-            using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, url))
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
             {
-                request.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
-                request.Headers.TryAddWithoutValidation("x-v2-request-id", securityContext.RequestId);
-                request.Headers.TryAddWithoutValidation("x-v2-nonce", securityContext.Nonce);
-                request.Headers.TryAddWithoutValidation("x-v2-timestamp", securityContext.TimestampMs.ToString(CultureInfo.InvariantCulture));
+                SecurityContext securityContext = CreateSecurityContext();
+                payload["request_id"] = securityContext.RequestId;
+                payload["nonce"] = securityContext.Nonce;
+                payload["timestamp"] = securityContext.TimestampMs;
 
-                try
+                string requestBody = CanonicalizeToken(payload);
+                string requestSignature = BuildRequestSignature(securityContext.RequestId, securityContext.Nonce, securityContext.TimestampMs, requestBody);
+                string url = BuildUrl(endpoint);
+
+                WriteLog($"[SDK][REQUEST] POST {url} {requestBody}" + (attempt > 1 ? $" (attempt {attempt})" : ""));
+
+                using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, url))
                 {
-                    HttpResponseMessage httpResponse = SharedHttpClient.SendAsync(request).GetAwaiter().GetResult();
-                    string raw = httpResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                    request.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+                    request.Headers.TryAddWithoutValidation("x-v2-request-id", securityContext.RequestId);
+                    request.Headers.TryAddWithoutValidation("x-v2-nonce", securityContext.Nonce);
+                    request.Headers.TryAddWithoutValidation("x-v2-timestamp", securityContext.TimestampMs.ToString(CultureInfo.InvariantCulture));
+                    request.Headers.TryAddWithoutValidation("x-v2-signature", requestSignature);
 
-                    WriteLog($"[SDK][RESPONSE] {(int)httpResponse.StatusCode} {raw}");
-
-                    JObject obj = ParseResponseObject(raw);
-                    response.statusCode = (int)httpResponse.StatusCode;
-                    response.raw = raw;
-
-                    SecurityValidationResult validation = ValidateResponseSecurity(httpResponse, obj, securityContext, expectSignedResponse);
-                    if (!validation.Success)
+                    try
                     {
-                        return Failure(validation.Code, validation.Message, raw, validation.SignatureKid, (int)httpResponse.StatusCode);
+                        HttpResponseMessage httpResponse = await SharedHttpClient.SendAsync(request).ConfigureAwait(false);
+                        byte[] rawBytes = await httpResponse.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+                        string raw = Encoding.UTF8.GetString(rawBytes);
+
+                        WriteLog($"[SDK][RESPONSE] {(int)httpResponse.StatusCode} {raw}");
+
+                        JObject obj = ParseResponseObject(raw);
+                        response.statusCode = (int)httpResponse.StatusCode;
+                        response.raw = raw;
+
+                        SecurityValidationResult validation = ValidateResponseSecurity(httpResponse, obj, securityContext, expectSignedResponse);
+                        if (!validation.Success)
+                        {
+                            return Failure(validation.Code, validation.Message, raw, validation.SignatureKid, (int)httpResponse.StatusCode);
+                        }
+
+                        response.signatureKid = validation.SignatureKid;
+                        response.requestId = securityContext.RequestId;
+                        response.nonce = securityContext.Nonce;
+                        response.success = ReadBool(obj["success"]) ?? httpResponse.IsSuccessStatusCode;
+                        response.code = obj["code"]?.ToString();
+                        response.message = CleanDisplayText(obj["message"]?.ToString() ?? httpResponse.ReasonPhrase ?? string.Empty);
+
+                        if (obj["session_id"] != null)
+                        {
+                            sessionId = obj["session_id"]?.ToString();
+                        }
+
+                        LoadUserData(obj);
+                        LoadVariableData(obj);
+                        LoadUpdateData(obj);
+                        LoadChatData(obj);
+
+                        if (!response.success && string.IsNullOrWhiteSpace(response.code))
+                        {
+                            response.code = httpResponse.StatusCode.ToString().ToUpperInvariant();
+                        }
+
+                        return obj;
                     }
-
-                    response.signatureKid = validation.SignatureKid;
-                    response.requestId = securityContext.RequestId;
-                    response.nonce = securityContext.Nonce;
-                    response.success = ReadBool(obj["success"]) ?? httpResponse.IsSuccessStatusCode;
-                    response.code = obj["code"]?.ToString();
-                    response.message = CleanDisplayText(obj["message"]?.ToString() ?? httpResponse.ReasonPhrase ?? string.Empty);
-
-                    if (obj["session_id"] != null)
+                    catch (HttpRequestException ex)
                     {
-                        sessionId = obj["session_id"]?.ToString();
+                        WriteLog($"[SDK] Network error on attempt {attempt}: {ex.Message}");
+                        if (attempt < maxAttempts)
+                        {
+                            await Task.Delay(retryDelaysMs[attempt - 1]).ConfigureAwait(false);
+                            continue;
+                        }
+                        return Failure("NETWORK_ERROR", $"Network error after {maxAttempts} attempts: {ex.Message}");
                     }
-
-                    LoadUserData(obj);
-                    LoadVariableData(obj);
-                    LoadUpdateData(obj);
-                    LoadChatData(obj);
-
-                    if (!response.success && string.IsNullOrWhiteSpace(response.code))
+                    catch (TaskCanceledException ex)
                     {
-                        response.code = httpResponse.StatusCode.ToString().ToUpperInvariant();
+                        WriteLog($"[SDK] Timeout on attempt {attempt}: {ex.Message}");
+                        if (attempt < maxAttempts)
+                        {
+                            await Task.Delay(retryDelaysMs[attempt - 1]).ConfigureAwait(false);
+                            continue;
+                        }
+                        return Failure("TIMEOUT", $"Request timed out after {maxAttempts} attempts: {ex.Message}");
                     }
-
-                    return obj;
-                }
-                catch (HttpRequestException ex)
-                {
-                    return Failure("NETWORK_ERROR", $"Network error: {ex.Message}");
-                }
-                catch (TaskCanceledException ex)
-                {
-                    return Failure("TIMEOUT", $"Request timed out: {ex.Message}");
-                }
-                catch (Exception ex)
-                {
-                    return Failure("SDK_ERROR", $"Unexpected SDK error: {ex.Message}");
+                    catch (Exception ex)
+                    {
+                        return Failure("SDK_ERROR", $"Unexpected SDK error: {ex.Message}");
+                    }
                 }
             }
+
+            return Failure("NETWORK_ERROR", "Request failed after all retry attempts.");
         }
 
         private SecurityValidationResult ValidateResponseSecurity(
@@ -1376,57 +1423,14 @@ namespace AuthlyX
 
         private static string StripBomArtifacts(string value)
         {
-            if (string.IsNullOrEmpty(value))
-            {
-                return string.Empty;
-            }
-
-            StringBuilder builder = new StringBuilder(value.Length);
-            for (int i = 0; i < value.Length; i++)
-            {
-                int current = value[i];
-
-                if (current == 0xFEFF || current == 0xFFFD)
-                {
-                    continue;
-                }
-
-                if (i + 2 < value.Length &&
-                    current == 0x00EF &&
-                    value[i + 1] == 0x00BB &&
-                    value[i + 2] == 0x00BF)
-                {
-                    i += 2;
-                    continue;
-                }
-
-                if (i + 2 < value.Length &&
-                    current == 0x2229 &&
-                    value[i + 1] == 0x2557 &&
-                    value[i + 2] == 0x2510)
-                {
-                    i += 2;
-                    continue;
-                }
-
-                builder.Append(value[i]);
-            }
-
-            return builder.ToString();
+            if (string.IsNullOrEmpty(value)) return string.Empty;
+            return value.TrimStart('﻿', '�');
         }
 
         private static bool IsBadLeadingDisplayChar(char value)
         {
             int code = value;
-            return code == 0xFEFF ||
-                code == 0x00EF ||
-                code == 0x00BB ||
-                code == 0x00BF ||
-                code == 0x2229 ||
-                code == 0x2557 ||
-                code == 0x2510 ||
-                code == 0xFFFD ||
-                code == 0x003F;
+            return code == 0xFEFF || code == 0xFFFD || code == 0x003F;
         }
 
         private void SetFailure(string code, string message, string raw = null, string signatureKid = null, int? statusCode = null)
@@ -1474,6 +1478,57 @@ namespace AuthlyX
                 Nonce = GenerateHex(16),
                 TimestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             };
+        }
+
+        private string BuildRequestSignature(string requestId, string nonce, long timestampMs, string canonicalBody)
+        {
+            string message = string.Concat(
+                timestampMs.ToString(CultureInfo.InvariantCulture), "\n",
+                requestId, "\n",
+                nonce, "\n",
+                canonicalBody);
+            byte[] keyBytes = Encoding.UTF8.GetBytes(secret);
+            using (HMACSHA256 hmac = new HMACSHA256(keyBytes))
+            {
+                return Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(message)));
+            }
+        }
+
+        private void StartExeIntegrityCheck()
+        {
+            string originalHash = applicationHash;
+            Thread thread = new Thread(() =>
+            {
+                while (true)
+                {
+                    Thread.Sleep(120000);
+                    CalculateApplicationHash();
+                    if (antiDebug && applicationHash != originalHash)
+                        Environment.Exit(1);
+                }
+            });
+            thread.IsBackground = true;
+            thread.Start();
+        }
+
+        private void StartIntegrityHeartbeat()
+        {
+            Thread thread = new Thread(() =>
+            {
+                while (true)
+                {
+                    Thread.Sleep(60000);
+                    if (antiDebug)
+                    {
+                        if (Debugger.IsAttached) Environment.Exit(1);
+                        bool isRemote = false;
+                        CheckRemoteDebuggerPresent(NativeGetCurrentProcess(), ref isRemote);
+                        if (isRemote) Environment.Exit(1);
+                    }
+                }
+            });
+            thread.IsBackground = true;
+            thread.Start();
         }
 
         private static string GenerateHex(int byteCount)
@@ -1599,6 +1654,9 @@ namespace AuthlyX
                 userData.Email = license["email"]?.ToString() ?? userData.Email;
                 userData.Hwid = license["hwid"]?.ToString() ?? license["sid"]?.ToString() ?? userData.Hwid;
                 userData.IpAddress = license["ip_address"]?.ToString() ?? userData.IpAddress;
+                userData.LastLogin = license["last_login"]?.ToString() ?? userData.LastLogin;
+                userData.RegisteredAt = license["registered_at"]?.ToString() ?? license["date_created"]?.ToString() ?? userData.RegisteredAt;
+                userData.Username = license["license_key"]?.ToString() ?? userData.Username;
             }
 
             if (device != null)
@@ -1902,7 +1960,7 @@ namespace AuthlyX
 
             try
             {
-                string value = SharedHttpClient.GetStringAsync(IpLookupUrl).GetAwaiter().GetResult().Trim();
+                string value = Task.Run(() => SharedHttpClient.GetStringAsync(IpLookupUrl)).GetAwaiter().GetResult().Trim();
                 if (!string.IsNullOrWhiteSpace(value))
                 {
                     cachedPublicIp = value;
@@ -1978,7 +2036,7 @@ namespace AuthlyX
             }
             catch
             {
-
+                
             }
         }
 
