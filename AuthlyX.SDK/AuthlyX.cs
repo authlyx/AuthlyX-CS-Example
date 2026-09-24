@@ -1,4 +1,4 @@
-// AuthlyX SDK Version 2.2
+// AuthlyX SDK V2.4
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Org.BouncyCastle.Crypto;
@@ -204,7 +204,8 @@ namespace AuthlyX
                 ["app_name"] = appName,
                 ["version"] = version,
                 ["secret"] = secret,
-                ["hash"] = applicationHash
+                ["hash"] = applicationHash,
+                ["ip"] = GetPublicIp()
             };
 
             JObject obj = SendJson("init", payload, true);
@@ -1453,11 +1454,30 @@ namespace AuthlyX
             response = new ResponseStruct();
         }
 
+
+
+
+
+
+
+
+
+
+
+
+
+        private static readonly HashSet<string> PinnedCertSha256Fingerprints = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "1DFC1605FBAD358D8BC844F76D15203FAC9CA5C1A79FD4857FFAF2864FBEBF96",
+            "76B27B80A58027DC3CF1DA68DAC17010ED93997D0B603E2FADBE85012493B5A7"
+        };
+
         private static HttpClient CreateHttpClient()
         {
             HttpClientHandler handler = new HttpClientHandler
             {
-                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
+                ServerCertificateCustomValidationCallback = ValidatePinnedCertificateChain
             };
 
             HttpClient client = new HttpClient(handler, true)
@@ -1465,9 +1485,45 @@ namespace AuthlyX
                 Timeout = TimeSpan.FromSeconds(25)
             };
             client.DefaultRequestHeaders.ConnectionClose = false;
-            client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "AuthlyX-CSharp-SDK/2.0");
+            client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "AuthlyX-CSharp-SDK/2.4");
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             return client;
+        }
+
+        private static bool ValidatePinnedCertificateChain(
+            HttpRequestMessage requestMessage,
+            System.Security.Cryptography.X509Certificates.X509Certificate2 certificate,
+            System.Security.Cryptography.X509Certificates.X509Chain chain,
+            System.Net.Security.SslPolicyErrors sslPolicyErrors)
+        {
+
+
+
+            string host = requestMessage?.RequestUri?.Host ?? string.Empty;
+            if (!string.Equals(host.TrimEnd('.'), "authly.cc", StringComparison.OrdinalIgnoreCase))
+            {
+                return sslPolicyErrors == System.Net.Security.SslPolicyErrors.None;
+            }
+
+            if (sslPolicyErrors != System.Net.Security.SslPolicyErrors.None || certificate == null || chain == null)
+            {
+                return false;
+            }
+
+            using (SHA256 sha256 = SHA256.Create())
+            {
+                foreach (System.Security.Cryptography.X509Certificates.X509ChainElement element in chain.ChainElements)
+                {
+                    byte[] hashBytes = sha256.ComputeHash(element.Certificate.RawData);
+                    string fingerprint = BitConverter.ToString(hashBytes).Replace("-", string.Empty);
+                    if (PinnedCertSha256Fingerprints.Contains(fingerprint))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         private SecurityContext CreateSecurityContext()
@@ -1681,7 +1737,17 @@ namespace AuthlyX
                 userData.IpAddress = GetPublicIp();
             }
 
-            userData.DaysLeft = ComputeDaysLeft(userData.ExpiryDate);
+
+
+
+            string rawDaysLeft = obj["days_left"]?.ToString()
+                ?? user?["days_left"]?.ToString()
+                ?? license?["days_left"]?.ToString()
+                ?? device?["days_left"]?.ToString();
+
+            userData.DaysLeft = int.TryParse(rawDaysLeft, out int serverDaysLeft)
+                ? serverDaysLeft
+                : ComputeDaysLeft(userData.ExpiryDate);
         }
 
         private void LoadVariableData(JObject obj)

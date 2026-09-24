@@ -15,6 +15,7 @@ namespace AuthlyX_CS_Example_Form
 
         private void Login_Load(object sender, EventArgs e)
         {
+            
             //Program.AuthlyXApp.init();
             //I moved it to program.cs line 32 to init before the form loads
         }

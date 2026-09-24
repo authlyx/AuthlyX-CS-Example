@@ -8,8 +8,8 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <PackageId>AuthlyX</PackageId>
-    <Version>2.2.0</Version>
-    <PackageReleaseNotes>V2.2: Reliability, Security &amp; Bug Fixes.</PackageReleaseNotes>
+    <Version>2.4.0</Version>
+    <PackageReleaseNotes>V2.4: TLS certificate pinning.</PackageReleaseNotes>
     <Authors>AuthlyX</Authors>
     <Company>AuthlyX</Company>
     <Description>AuthlyX C# SDK for .NET Framework and .NET Standard with v2 request metadata and response signature verification.</Description>

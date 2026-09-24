@@ -13,8 +13,7 @@ namespace AuthlyX_CS_Example_Form
             ownerId: "",
             appName: "",
             version: "",
-            secret: "",
-            api: ""
+            secret: ""
         );
 
         /*
