@@ -27,7 +27,13 @@ You can find your app key under your app's credentials in the [dashboard](https:
 
 ## Add it to your own project
 
-Copy `AuthlyX.cs` into your project and add these NuGet packages:
+Install the package from NuGet:
+
+```bat
+dotnet add package AuthlyX --prerelease
+```
+
+Or copy `AuthlyX.cs` into your project and add these NuGet packages:
 
 - `BouncyCastle.Cryptography`
 - `Newtonsoft.Json`
