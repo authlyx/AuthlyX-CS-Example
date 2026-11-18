@@ -1,154 +1,309 @@
+using AuthlyXSDK;
+using Guna.UI2.WinForms;
+using Newtonsoft.Json.Linq;
 using System;
-using System.Linq;
+using System.Drawing;
+using System.Text;
 using System.Windows.Forms;
+
 namespace AuthlyX_CS_Example_Form
 {
     public partial class Home : Form
     {
-        private const string ChannelName = "MAIN";
-        private bool loadingChats;
+        private static readonly Color Accent = Color.FromArgb(59, 110, 230);
+        private static readonly Color Field = Color.FromArgb(22, 22, 22);
+        private static readonly Color Muted = Color.FromArgb(150, 150, 150);
+        private static readonly Color Good = Color.FromArgb(74, 200, 120);
+        private static readonly Color Bad = Color.FromArgb(235, 90, 90);
+        private bool signingOut;
 
         public Home()
         {
             InitializeComponent();
+            Theme(this);
+            btnSignOut.FillColor = Color.FromArgb(120, 32, 32);
+            btnSignOut.HoverState.FillColor = Color.FromArgb(150, 40, 40);
         }
 
-        private void guna2ControlBox1_Click(object sender, EventArgs e)
+        private static void Theme(Control parent)
         {
-            Environment.Exit(0);
-            Application.Exit();
+            foreach (Control control in parent.Controls)
+            {
+                if (control is Guna2Button button)
+                {
+                    button.BorderRadius = 8;
+                    button.FillColor = Accent;
+                    button.HoverState.FillColor = Color.FromArgb(80, 130, 245);
+                    button.DisabledState.FillColor = Color.FromArgb(40, 40, 40);
+                    button.DisabledState.ForeColor = Muted;
+                    button.Font = new Font("Segoe UI Semibold", 9.5F);
+                    button.ForeColor = Color.White;
+                    button.Cursor = Cursors.Hand;
+                }
+                else if (control is Guna2TextBox box)
+                {
+                    box.BorderRadius = 8;
+                    box.BorderColor = Color.FromArgb(55, 55, 55);
+                    box.FocusedState.BorderColor = Accent;
+                    box.HoverState.BorderColor = Color.FromArgb(90, 90, 90);
+                    box.FillColor = Field;
+                    box.ForeColor = Color.White;
+                    box.PlaceholderForeColor = Color.FromArgb(110, 110, 110);
+                    box.DisabledState.FillColor = Field;
+                    box.DisabledState.ForeColor = Color.White;
+                    box.BackColor = Color.Transparent;
+                    if (box.Font.Name != "Consolas")
+                    {
+                        box.Font = new Font("Segoe UI", 9.75F);
+                    }
+                }
+                Theme(control);
+            }
         }
 
         private void Home_Load(object sender, EventArgs e)
         {
-            var data = Program.AuthlyXApp.userData;
-            username.Text = data.Username;
-            email.Text = data.Email;
-            license_key.Text = data.LicenseKey;
-            ipaddress.Text = data.IpAddress;
-            sub.Text = data.Subscription;
-            registered_at.Text = data.RegisteredAt;
-            expiry.Text = data.ExpiryDate;
-            last_login.Text = data.LastLogin;
+            Program.app.SessionInvalidated += SessionInvalidated;
+            var user = Program.app.userData;
+            titleLabel.Text = "Signed in as " + DisplayName(user);
+            subtitleLabel.Text = Show(user.Plan) + " plan  |  Expires " + Expiry(user);
+            if (user.LoginType == "license")
+            {
+                Row("License key", user.LicenseKey);
+            }
+            else if (user.LoginType == "device")
+            {
+                Row("Device", user.SID);
+            }
+            else
+            {
+                Row("Username", user.Username);
+                if (user.LicenseKey != "")
+                {
+                    Row("License key", user.LicenseKey);
+                }
+            }
+            Row("Email", user.Email);
+            Row("Plan", user.Plan);
+            Row("Expires", Expiry(user));
+            Row("Device limit", user.DeviceLimit == 0 ? "Unlimited" : user.DeviceLimit.ToString());
+            Row("Registered", When(user.RegisteredAt));
+            Row("Last sign-in", When(user.LastLogin));
+            Row("System ID", user.SID);
+            Row("IP address", user.IpAddress);
+            Row("Country", user.Country);
+            accountTable.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            accountTable.Controls.Add(new Label(), 0, accountTable.RowCount++);
+            LoadFeatures();
         }
 
-        private void btn_GetVar_Click(object sender, EventArgs e)
+        private void Row(string label, string value)
         {
-            string key = txtVarKey.Text;
-            if (string.IsNullOrWhiteSpace(key))
-            {
-                MessageBox.Show("Please enter a variable key first.",
-                    "Missing Key", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
+            accountTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
+            accountTable.Controls.Add(Cell(label, Muted), 0, accountTable.RowCount);
+            var copy = Cell(Show(value), Color.White);
+            copy.AutoEllipsis = true;
+            accountTable.Controls.Add(copy, 1, accountTable.RowCount++);
+        }
 
-            btn_GetVar.Enabled = false;
-            Program.AuthlyXApp.GetVariable(key, (value, response) =>
-            {
-                btn_GetVar.Enabled = true;
+        private static Label Cell(string text, Color color) => new Label {
+            Text = text, ForeColor = color, Dock = DockStyle.Fill, Font = new Font("Segoe UI", 10F),
+            TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(0)
+        };
 
-                if (!response.success)
+        private void Status(string message, bool ok)
+        {
+            statusLabel.Text = message;
+            statusLabel.ForeColor = ok ? Good : Bad;
+        }
+
+        private void Run<T>(Guna2Button button, Action<Action<Result<T>>> operation,
+                            Action<Result<T>>? done = null)
+        {
+            button.Enabled = false;
+            statusLabel.ForeColor = Muted;
+            statusLabel.Text = "Working...";
+            operation(result =>
+            {
+                if (IsDisposed)
                 {
-                    MessageBox.Show(response.message,
-                        "Variable Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
-
-                txtVarValue.Text = value ?? string.Empty;
+                button.Enabled = true;
+                Status(result.message, result.ok);
+                done?.Invoke(result);
             });
         }
 
-        private void btn_SetVar_Click(object sender, EventArgs e)
+        private void ReadVariable_Click(object sender, EventArgs e)
         {
-            string key = txtVarKey.Text;
-            string value = txtVarValue.Text;
-
-            if (string.IsNullOrWhiteSpace(key))
+            if (Required(txtVarName, "Enter a variable name."))
             {
-                MessageBox.Show("Please enter a variable key first.",
-                    "Missing Key", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                Run<string>(btnReadVar, callback => Program.app.getVariable(txtVarName.Text.Trim(), callback),
+                            result => txtVarValue.Text = result.ok ? result.data : "");
+            }
+        }
+
+        private void UpdateVariable_Click(object sender, EventArgs e)
+        {
+            if (Required(txtVarName, "Enter a variable name."))
+            {
+                Run<JObject>(btnUpdateVar, callback => Program.app.updateVariable(txtVarName.Text.Trim(), txtVarValue.Text, callback));
+            }
+        }
+
+        private void RefreshFeatures_Click(object sender, EventArgs e) => LoadFeatures();
+
+        private void LoadFeatures()
+        {
+            Run<JObject>(btnRefreshFeatures, Program.app.getFeatures, features =>
+            {
+                if (!features.ok)
+                {
+                    featuresBox.Text = features.message;
+                    return;
+                }
+                Run<JObject>(btnRefreshFeatures, Program.app.getAllMetadata, metadata =>
+                {
+                    var text = new StringBuilder();
+                    List(text, "FEATURES", features.data?["features"] as JObject, "No features on this plan.");
+                    text.AppendLine();
+                    List(text, "METADATA", metadata.ok ? metadata.data?["metadata"] as JObject : null,
+                         metadata.ok ? "No metadata." : metadata.message);
+                    featuresBox.Text = text.ToString();
+                });
+            });
+        }
+
+        private static void List(StringBuilder text, string heading, JObject? values, string empty)
+        {
+            text.AppendLine(heading);
+            if (values == null || values.Count == 0)
+            {
+                text.AppendLine("  " + empty);
                 return;
             }
-
-            btn_SetVar.Enabled = false;
-            Program.AuthlyXApp.SetVariable(key, value, response =>
+            foreach (var item in values)
             {
-                btn_SetVar.Enabled = true;
-
-                if (!response.success)
-                {
-                    MessageBox.Show(response.message,
-                        "Variable Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-            });
+                string value = item.Value == null || item.Value.Type == JTokenType.Null ? "-"
+                               : item.Value.Type == JTokenType.String ? Show((string?)item.Value)
+                               : item.Value.ToString(Newtonsoft.Json.Formatting.None);
+                text.AppendLine("  " + item.Key.PadRight(24) + value);
+            }
         }
 
-        private void btn_SendMSG_Click(object sender, EventArgs e)
+        private void FetchScript_Click(object sender, EventArgs e)
         {
-            string chat = txtMSG.Text;
-            if (!string.IsNullOrEmpty(chat))
+            if (Required(txtScriptName, "Enter a script name."))
             {
-                btn_SendMSG.Enabled = false;
-                Program.AuthlyXApp.SendChat(chat, ChannelName, response =>
+                Run<JObject>(btnFetchScript, callback => Program.app.getScript(txtScriptName.Text.Trim(), callback),
+                             result => scriptBox.Text = result.ok
+                                 ? ((string?)result.data?["content"] ?? "").Replace("\r\n", "\n").Replace("\n", Environment.NewLine)
+                                 : "");
+            }
+        }
+
+        private void SendLog_Click(object sender, EventArgs e)
+        {
+            if (Required(txtLog, "Type a message to send."))
+            {
+                Run<JObject>(btnSendLog, callback => Program.app.log(txtLog.Text.Trim(), callback), result =>
                 {
-                    btn_SendMSG.Enabled = true;
-
-                    if (!response.success)
+                    if (result.ok)
                     {
-                        MessageBox.Show(response.message,
-                            "Chat Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        return;
+                        txtLog.Clear();
                     }
-
-                    txtMSG.Clear();
-                    RefreshChats();
                 });
             }
         }
 
-        private void timer1_Tick(object sender, EventArgs e)
+        private void CheckSession_Click(object sender, EventArgs e) =>
+            Run<JObject>(btnCheckSession, Program.app.checkSession);
+
+        private void SaveOffline_Click(object sender, EventArgs e) =>
+            Run<JObject>(btnSaveOffline, Program.app.saveOfflineAccess);
+
+        private void SignOut_Click(object sender, EventArgs e) => SignOut();
+
+        private bool Required(Guna2TextBox box, string message)
         {
-            RefreshChats();
+            if (!string.IsNullOrWhiteSpace(box.Text))
+            {
+                return true;
+            }
+            Status(message, false);
+            box.Focus();
+            return false;
         }
 
-        private void RefreshChats()
+        private void Home_FormClosing(object sender, FormClosingEventArgs e)
         {
-            if (loadingChats)
+            if (signingOut)
             {
                 return;
             }
+            e.Cancel = true;
+            SignOut();
+        }
 
-            loadingChats = true;
-            Program.AuthlyXApp.GetChats(ChannelName, (chatJson, response) =>
+        private void Home_FormClosed(object sender, FormClosedEventArgs e)
+        {
+            Program.app.SessionInvalidated -= SessionInvalidated;
+        }
+
+        private void SessionInvalidated(AuthlyXException error)
+        {
+            if (IsDisposed || !IsHandleCreated)
             {
-                loadingChats = false;
-
-                if (!response.success)
+                return;
+            }
+            BeginInvoke(new Action(() =>
+            {
+                if (IsDisposed)
                 {
                     return;
                 }
+                signingOut = true;
+                MessageBox.Show(error.Message, "Access ended");
+                Close();
+            }));
+        }
 
-                richtextbox.Clear();
-
-                if (Program.AuthlyXApp.chatMessages.Count <= 0)
+        private void SignOut()
+        {
+            if (signingOut)
+            {
+                return;
+            }
+            signingOut = true;
+            Enabled = false;
+            statusLabel.ForeColor = Muted;
+            statusLabel.Text = "Signing out...";
+            Program.app.logout(result =>
+            {
+                if (IsDisposed)
                 {
                     return;
                 }
-
-                var sortedMessages = Program.AuthlyXApp.chatMessages.Messages
-                    .OrderBy(m => m.CreatedAtDateTime ?? DateTime.MinValue)
-                    .ToList();
-
-                foreach (var msg in sortedMessages)
+                if (!result.ok)
                 {
-                    string timeStr = msg.CreatedAtDateTime?.ToString("HH:mm:ss") ?? msg.CreatedAt;
-                    string formattedMsg = $"[{timeStr}] {msg.Username}: {msg.Message}\r\n";
-                    richtextbox.AppendText(formattedMsg);
+                    MessageBox.Show(result.message, "Sign out");
                 }
-
-                richtextbox.SelectionStart = richtextbox.Text.Length;
-                richtextbox.ScrollToCaret();
+                Close();
             });
         }
+
+        private static string Show(string? value) => string.IsNullOrEmpty(value) ? "-" : value!;
+
+        private static string When(DateTimeOffset? value) =>
+            value == null ? "-" : value.Value.ToUniversalTime().ToString("yyyy-MM-dd HH:mm") + " UTC";
+
+        private static string DisplayName(UserData user) =>
+            user.LoginType == "license" ? Show(user.LicenseKey)
+            : user.LoginType == "device" ? "this device"
+                                         : Show(user.Username);
+
+        private static string Expiry(UserData user) =>
+            user.IsLifetime || user.ExpiryDate == null ? "Never" : user.ExpiryDate.Value.ToString("yyyy-MM-dd");
     }
 }

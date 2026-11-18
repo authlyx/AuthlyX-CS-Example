@@ -1,186 +1,122 @@
-﻿using AuthlyX;
+using AuthlyXSDK;
 using Guna.UI2.WinForms;
 using System;
 using System.Windows.Forms;
+
 namespace AuthlyX_CS_Example_Form
 {
     public partial class Login : Form
     {
-        private bool isInitializing;
-
         public Login()
         {
             InitializeComponent();
         }
 
+        private void deviceLogin_Click(object sender, EventArgs e)
+        {
+            SignIn(deviceLogin, done => Program.app.deviceLogin(done));
+        }
+
         private void Login_Load(object sender, EventArgs e)
         {
-            
-            //Program.AuthlyXApp.init();
-            //I moved it to program.cs line 32 to init before the form loads
+            Enabled = false;
+            Program.app.init(result =>
+            {
+                if (IsDisposed)
+                {
+                    return;
+                }
+
+                if (!result.ok)
+                {
+                    if (result.code == "UPDATE_REQUIRED" || result.code == "VERSION_MISMATCH")
+                    {
+                        Close();
+                    }
+                    else if (MessageBox.Show(result.message, "Could not connect", MessageBoxButtons.RetryCancel) == DialogResult.Retry)
+                    {
+                        Login_Load(sender, e);
+                    }
+                    else
+                    {
+                        Close();
+                    }
+                    return;
+                }
+                if (result.code == "OFFLINE_MODE")
+                {
+                    MessageBox.Show(result.message, "Offline");
+                }
+                Enabled = true;
+            });
         }
 
         private void btn_Login_Click(object sender, EventArgs e)
         {
-            string username = txtUser.Text;
-            string password = txtPass.Text;
-
-            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+            if (string.IsNullOrEmpty(txtUser.Text) || string.IsNullOrEmpty(txtPass.Text))
             {
-                MessageBox.Show("Please enter both username and password",
-                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("Please enter both username and password.", "AuthlyX");
                 return;
             }
-
-            SetFormBusy(true, btn_Login, "Logging in...");
-
-            try
-            {
-                Program.AuthlyXApp.Login(username, password, callback: response =>
-                {
-                    if (response.success)
-                    {
-                        MessageBox.Show($"Welcome {Program.AuthlyXApp.userData.Username}!",
-                            "Login Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-                        Home home = new Home();
-                        home.Show();
-                        Hide();
-                    }
-                    else
-                    {
-                        MessageBox.Show($"Login failed: {response.message}",
-                            "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
-
-                    SetFormBusy(false, btn_Login, "Login");
-                });
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error during login: {ex.Message}",
-                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                SetFormBusy(false, btn_Login, "Login");
-            }
-        }
-
-        private void btn_Register_Click(object sender, EventArgs e)
-        {
-            string username = txt_regUser.Text;
-            string password = txt_regPass.Text;
-            string key = txt_regKey.Text;
-
-            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password) || string.IsNullOrEmpty(key))
-            {
-                MessageBox.Show("Please enter both username, password and key",
-                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            SetFormBusy(true, btn_Register, "Registering...");
-
-            try
-            {
-                Program.AuthlyXApp.Register(username, password, key, response =>
-                {
-                    if (response.success)
-                    {
-                        MessageBox.Show($"Welcome {Program.AuthlyXApp.userData.Username}!",
-                            "Registration Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-                        Home home = new Home();
-                        home.Show();
-                        Hide();
-                    }
-                    else
-                    {
-                        MessageBox.Show($"Registration failed: {response.message}",
-                            "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
-
-                    SetFormBusy(false, btn_Register, "Register");
-                });
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error during Registration: {ex.Message}",
-                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                SetFormBusy(false, btn_Register, "Register");
-            }
+            SignIn(btn_Login, done => Program.app.login(txtUser.Text, txtPass.Text, done));
         }
 
         private void btn_simpleLogin_Click(object sender, EventArgs e)
         {
-            string key = txt_Key.Text;
-
-            if (string.IsNullOrEmpty(key))
+            if (string.IsNullOrEmpty(txt_Key.Text))
             {
-                MessageBox.Show("Please enter a key to continue",
-                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("Please enter a license key.", "AuthlyX");
                 return;
             }
-
-            SetFormBusy(true, btn_simpleLogin, "Logging in...");
-
-            try
-            {
-                Program.AuthlyXApp.Login(key, callback: response =>
-                {
-                    if (response.success)
-                    {
-                        MessageBox.Show($"Welcome {Program.AuthlyXApp.userData.LicenseKey}!",
-                            "Login Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-                        Home home = new Home();
-                        home.Show();
-                        Hide();
-                    }
-                    else
-                    {
-                        MessageBox.Show($"Login failed: {response.message}",
-                            "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
-
-                    SetFormBusy(false, btn_simpleLogin, "Login");
-                });
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error during Login: {ex.Message}",
-                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                SetFormBusy(false, btn_simpleLogin, "Login");
-            }
+            SignIn(btn_simpleLogin, done => Program.app.login(txt_Key.Text, done));
         }
 
+        private void SignIn(Guna2Button button, Action<Action<Result<SessionInfo>>> operation)
+        {
+            string title = button.Text;
+            Enabled = false;
+            button.Text = "Signing in...";
+            operation(result =>
+            {
+                if (IsDisposed)
+                {
+                    return;
+                }
+
+                Enabled = true;
+                button.Text = title;
+                if (!result.ok)
+                {
+                    MessageBox.Show(result.message, "Sign-in failed");
+                    return;
+                }
+                var home = new Home();
+                home.FormClosed += (sender, args) =>
+                {
+                    if (!IsDisposed)
+                    {
+                        Show();
+                        Activate();
+                    }
+                };
+                home.Show();
+                Hide();
+            });
+        }
+
+        private void btn_Register_Click(object sender, EventArgs e)
+        {
+        }
         private void exit_Click(object sender, EventArgs e)
         {
-            Application.Exit();
-        }
-
-
-        private void SetFormBusy(bool busy, Guna2Button activeButton = null, string activeText = null)
-        {
-            txtUser.Enabled = !busy;
-            txtPass.Enabled = !busy;
-            txt_regUser.Enabled = !busy;
-            txt_regPass.Enabled = !busy;
-            txt_regKey.Enabled = !busy;
-            txt_Key.Enabled = !busy;
-
-            btn_Login.Enabled = !busy;
-            btn_Register.Enabled = !busy;
-            btn_simpleLogin.Enabled = !busy;
-            exit.Enabled = !busy;
-
-            btn_Login.Text = "Login";
-            btn_Register.Text = "Register";
-            btn_simpleLogin.Text = "Login";
-
-            if (busy && activeButton != null)
+            Enabled = false;
+            Program.app.logout(result =>
             {
-                activeButton.Enabled = false;
-                activeButton.Text = activeText;
-            }
+                if (!IsDisposed)
+                {
+                    Close();
+                }
+            });
         }
     }
 }
